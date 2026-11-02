@@ -8,7 +8,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>FormatWheel.PrintPlugin</RootNamespace>
     <AssemblyName>FormatWheel.Print</AssemblyName>
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Title>Format Wheel · печать</Title>
     <Description>Пример расширения Format Wheel: отправка файлов на печать из третьего меню колеса (Alt + Shift). 10 функций + автообновление с GitHub.</Description>
