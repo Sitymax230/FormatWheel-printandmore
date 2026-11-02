@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- windows-таргет нужен из-за System.Drawing (иконки лепестков) -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- для публикации пакета, которым пользуются авторы расширений -->
+    <PackageId>FormatWheel.Sdk</PackageId>
+    <Version>1.2.0</Version>
+    <Authors>KantraCity</Authors>
+    <Description>SDK for writing Format Wheel extensions (converters and actions).</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/KantraCity/FormatWheel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/KantraCity/FormatWheel-app</RepositoryUrl>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+</Project>

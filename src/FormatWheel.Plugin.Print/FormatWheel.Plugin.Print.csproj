@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>FormatWheel.PrintPlugin</RootNamespace>
+    <AssemblyName>FormatWheel.Print</AssemblyName>
+    <Version>1.0.2</Version>
+    <Title>Format Wheel · печать</Title>
+    <Description>Пример расширения Format Wheel: отправка файлов на печать из второго меню колеса (Ctrl + Shift).</Description>
+  </PropertyGroup>
+
+  <!-- SDK загружается основной программой, ноExtensionLoader держит каждую DLL в своём
+       AssemblyLoadContext и ищет зависимости в папке расширения — поэтому копия FormatWheel.Sdk.dll
+       должна лежать рядом (копируется автоматически через ProjectReference). -->
+  <ItemGroup>
+    <ProjectReference Include="../FormatWheel.Sdk/FormatWheel.Sdk.csproj" />
+  </ItemGroup>
+
+</Project>
