@@ -89,6 +89,7 @@ Shift открывает колесо, Ctrl и Alt при зажатом Shift �
 
 | Версия | Файл | Скачать |
 |--------|------|---------|
+| 1.0.4 | `FormatWheel.Print-Setup-1.0.4.exe` | [скачать](https://github.com/Sitymax230/FormatWheel-printandmore/raw/release/FormatWheel.Print-Setup-1.0.4.exe) |
 | 1.0.3 | `FormatWheel.Print-Setup-1.0.3.exe` | [скачать](https://github.com/Sitymax230/FormatWheel-printandmore/raw/release/FormatWheel.Print-Setup-1.0.3.exe) |
 | 1.0.2 | `FormatWheel.Print-Setup-1.0.2.exe` | [скачать](https://github.com/Sitymax230/FormatWheel-printandmore/raw/release/FormatWheel.Print-Setup-1.0.2.exe) |
 | 1.0.1 | `FormatWheel.Print-Setup-1.0.1.exe` | [скачать](https://github.com/Sitymax230/FormatWheel-printandmore/raw/release/FormatWheel.Print-Setup-1.0.1.exe) |
