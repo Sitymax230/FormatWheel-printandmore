@@ -83,6 +83,18 @@ Shift открывает колесо, Ctrl и Alt при зажатом Shift �
 - **Установщик:** `installer\FormatWheel.Print.iss` → `dist\FormatWheel.Print-Setup-<version>.exe`
 - Плагин устанавливается в `%LOCALAPPDATA%\Programs\FormatWheel\extensions\FormatWheel.Print\`
 
+## Готовые установщики (.exe)
+
+Скомпилированные установщики плагина печати доступны в ветке `release`:
+
+| Версия | Файл | Скачать |
+|--------|------|---------|
+| 1.0.2 | `FormatWheel.Print-Setup-1.0.2.exe` | [скачать](https://github.com/Sitymax230/FormatWheel-printandmore/raw/release/FormatWheel.Print-Setup-1.0.2.exe) |
+| 1.0.1 | `FormatWheel.Print-Setup-1.0.1.exe` | [скачать](https://github.com/Sitymax230/FormatWheel-printandmore/raw/release/FormatWheel.Print-Setup-1.0.1.exe) |
+| 1.0.0 | `FormatWheel.Print-Setup-1.0.0.exe` | [скачать](https://github.com/Sitymax230/FormatWheel-printandmore/raw/release/FormatWheel.Print-Setup-1.0.0.exe) |
+
+Все версии находятся в ветке [release](https://github.com/Sitymax230/FormatWheel-printandmore/tree/release).
+
 ## Переменные окружения
 
 - `FORMATWHEEL_LANG=xx` — язык интерфейса без смены языка системы.
