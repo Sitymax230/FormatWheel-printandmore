@@ -57,7 +57,7 @@ public sealed class PrintActions : IWheelActions
     private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
     private const string RepoOwner = "Sitymax230";
     private const string RepoName = "FormatWheel-printandmore";
-    public const string CurrentVersion = "1.0.4";
+    public const string CurrentVersion = "1.0.5";
 
     public bool CanHandle(string path)
     {

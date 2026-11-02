@@ -13,17 +13,17 @@ internal sealed class PrintForm : Form
     private readonly PluginSettings _settings;
 
     // Элементы управления
-    private readonly ComboBox _printerCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly Label _printerStatus = new() { Height = 18, ForeColor = System.Drawing.Color.Gray, Font = new Font("Segoe UI", 8.5f) };
-    private readonly NumericUpDown _copies = new() { Minimum = 1, Maximum = 999, Value = 1, Width = 70 };
-    private readonly RadioButton _radioAll = new() { Text = "Все страницы", Checked = true };
-    private readonly RadioButton _radioPages = new() { Text = "Страницы:" };
-    private readonly TextBox _pageRange = new() { Enabled = false, Width = 100 };
-    private readonly ComboBox _orientation = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly ComboBox _paperSize = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly CheckBox _colorCheck = new() { Text = "Цветная печать", Checked = true };
-    private readonly ComboBox _duplex = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly CheckBox _printToFile = new() { Text = "Печать в файл" };
+    private readonly ComboBox _printerCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList, Height = 24 };
+    private readonly Label _printerStatus = new() { Height = 16, ForeColor = System.Drawing.Color.Gray, Font = new Font("Segoe UI", 8.5f), AutoSize = true };
+    private readonly NumericUpDown _copies = new() { Minimum = 1, Maximum = 999, Value = 1, Width = 60, Height = 24 };
+    private readonly RadioButton _radioAll = new() { Text = "Все страницы", Checked = true, AutoSize = true };
+    private readonly RadioButton _radioPages = new() { Text = "Страницы:", AutoSize = true };
+    private readonly TextBox _pageRange = new() { Width = 120, Height = 24, Enabled = false };
+    private readonly ComboBox _orientation = new() { DropDownStyle = ComboBoxStyle.DropDownList, Height = 24 };
+    private readonly ComboBox _paperSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Height = 24 };
+    private readonly CheckBox _colorCheck = new() { Text = "Цветная печать", Checked = true, AutoSize = true };
+    private readonly ComboBox _duplex = new() { DropDownStyle = ComboBoxStyle.DropDownList, Height = 24 };
+    private readonly CheckBox _printToFile = new() { Text = "Печать в файл", AutoSize = true };
 
     public PrinterSettings PrinterSettings { get; private set; } = new PrinterSettings();
     public int Copies => (int)_copies.Value;
@@ -41,55 +41,49 @@ internal sealed class PrintForm : Form
         _settings = settings;
 
         Text = "Печать — Format Wheel";
-        Width = 520;
-        Height = 560;
+        Width = 500;
+        Height = 540;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
+        Padding = new Padding(12);
 
         // Заголовок
         var title = new Label
         {
             Text = $"Файлов для печати: {files.Length}",
             Dock = DockStyle.Top,
-            Height = 28,
-            Padding = new Padding(15, 8, 0, 0),
-            Font = new Font("Segoe UI", 10.5f, FontStyle.Bold)
+            Height = 26,
+            Padding = new Padding(0, 4, 0, 0),
+            Font = new Font("Segoe UI", 11f, FontStyle.Bold),
+            ForeColor = System.Drawing.Color.FromArgb(0x20, 0x20, 0x20)
         };
 
         var hint = new Label
         {
             Text = "Печать доступна для фото и документов. Видео и аудио не поддерживаются.",
             Dock = DockStyle.Top,
-            Height = 20,
-            Padding = new Padding(15, 0, 0, 0),
+            Height = 18,
             Font = new Font("Segoe UI", 8.5f),
             ForeColor = System.Drawing.Color.Gray
         };
 
         // Принтер
-        var printerGroup = new GroupBox { Text = "Принтер", Dock = DockStyle.Top, Height = 90, Padding = new Padding(10) };
-        var printerLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3 };
-        printerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
-        printerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
+        var printerGroup = MakeGroup("Принтер", 80);
+        var printerTable = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Padding = new Padding(4) };
+        printerTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+        printerTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        printerTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        printerTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
 
-        var printerLabel = new Label { Text = "Принтер:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+        printerTable.Controls.Add(new Label { Text = "Принтер:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
         _printerCombo.Dock = DockStyle.Fill;
-        _printerCombo.Height = 26;
+        printerTable.Controls.Add(_printerCombo, 1, 0);
+        printerTable.Controls.Add(new Label(), 0, 1);
         _printerStatus.Dock = DockStyle.Fill;
-        _printerStatus.TextAlign = ContentAlignment.MiddleLeft;
-
-        printerLayout.Controls.Add(printerLabel, 0, 0);
-        printerLayout.Controls.Add(_printerCombo, 1, 0);
-        printerLayout.Controls.Add(new Label(), 0, 1);
-        printerLayout.Controls.Add(_printerStatus, 1, 1);
-        var propsBtn = new Button { Text = "Свойства", Dock = DockStyle.Fill, Height = 28 };
-        propsBtn.Click += (_, _) => ShowPrinterProperties();
-        printerLayout.Controls.Add(new Label(), 0, 2);
-        printerLayout.Controls.Add(propsBtn, 1, 2);
-
-        printerGroup.Controls.Add(printerLayout);
+        printerTable.Controls.Add(_printerStatus, 1, 1);
+        printerGroup.Controls.Add(printerTable);
 
         // Загружаем принтеры
         foreach (string p in PrinterSettings.InstalledPrinters)
@@ -123,121 +117,125 @@ internal sealed class PrintForm : Form
             }
         };
 
+        // Кнопка свойств под принтером
+        var propsBtn = new Button { Text = "Свойства принтера", Width = 140, Height = 26, Font = new Font("Segoe UI", 9f) };
+        propsBtn.Click += (_, _) => ShowPrinterProperties();
+        var propsPanel = new Panel { Dock = DockStyle.Top, Height = 32, Padding = new Padding(0, 4, 0, 0) };
+        propsPanel.Controls.Add(propsBtn);
+        propsBtn.Location = new Point(0, 2);
+
         // Количество копий
-        var copiesGroup = new GroupBox { Text = "Копии", Dock = DockStyle.Top, Height = 50, Padding = new Padding(10) };
-        var copiesLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
-        copiesLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        copiesLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        copiesLayout.Controls.Add(new Label { Text = "Количество:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
-        _copies.Value = _settings.Copies;
-        _copies.Dock = DockStyle.Fill;
-        _copies.Height = 26;
-        copiesLayout.Controls.Add(_copies, 1, 0);
-        copiesGroup.Controls.Add(copiesLayout);
+        var copiesGroup = MakeGroup("Копии", 42);
+        var copiesTable = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Padding = new Padding(4) };
+        copiesTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+        copiesTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        copiesTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        copiesTable.Controls.Add(new Label { Text = "Количество:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
+        _copies.Dock = DockStyle.Left;
+        copiesTable.Controls.Add(_copies, 1, 0);
+        copiesGroup.Controls.Add(copiesTable);
 
         // Диапазон страниц
-        var rangeGroup = new GroupBox { Text = "Диапазон страниц", Dock = DockStyle.Top, Height = 70, Padding = new Padding(10) };
-        var rangeLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3 };
-        rangeLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        rangeLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        rangeLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var rangeGroup = MakeGroup("Диапазон страниц", 42);
+        var rangeTable = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(4) };
+        rangeTable.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        rangeTable.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        rangeTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        rangeTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         _radioAll.Dock = DockStyle.Fill;
         _radioPages.Dock = DockStyle.Fill;
-        _pageRange.Dock = DockStyle.Fill;
+        _pageRange.Dock = DockStyle.Left;
         _pageRange.Enabled = false;
         _radioPages.CheckedChanged += (_, _) => _pageRange.Enabled = _radioPages.Checked;
-        rangeLayout.Controls.Add(_radioAll, 0, 0);
-        rangeLayout.Controls.Add(_radioPages, 1, 0);
-        rangeLayout.Controls.Add(_pageRange, 2, 0);
-        rangeGroup.Controls.Add(rangeLayout);
+        rangeTable.Controls.Add(_radioAll, 0, 0);
+        rangeTable.Controls.Add(_radioPages, 1, 0);
+        rangeTable.Controls.Add(_pageRange, 2, 0);
+        rangeGroup.Controls.Add(rangeTable);
 
         // Ориентация и бумага
-        var pageGroup = new GroupBox { Text = "Лист", Dock = DockStyle.Top, Height = 90, Padding = new Padding(10) };
-        var pageLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
-        pageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        pageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        pageLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-        pageLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-
+        var pageGroup = MakeGroup("Лист", 64);
+        var pageTable = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Padding = new Padding(4) };
+        pageTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        pageTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        pageTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        pageTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        pageTable.Controls.Add(new Label { Text = "Ориентация:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
+        _orientation.Dock = DockStyle.Fill;
         _orientation.Items.Add("Книжная");
         _orientation.Items.Add("Альбомная");
         _orientation.SelectedIndex = _settings.Landscape ? 1 : 0;
-        _orientation.Dock = DockStyle.Fill;
-        pageLayout.Controls.Add(new Label { Text = "Ориентация:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
-        pageLayout.Controls.Add(_orientation, 1, 0);
-
+        pageTable.Controls.Add(_orientation, 1, 0);
+        pageTable.Controls.Add(new Label { Text = "Размер бумаги:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 1);
+        _paperSize.Dock = DockStyle.Fill;
         _paperSize.Items.Add("A4");
         _paperSize.Items.Add("A3");
         _paperSize.Items.Add("A5");
         _paperSize.Items.Add("Letter");
         int paperIdx = Math.Max(0, Array.IndexOf(new[] { "A4", "A3", "A5", "Letter" }, _settings.PaperSize));
         _paperSize.SelectedIndex = paperIdx;
-        _paperSize.Dock = DockStyle.Fill;
-        pageLayout.Controls.Add(new Label { Text = "Размер бумаги:", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 1);
-        pageLayout.Controls.Add(_paperSize, 1, 1);
-        pageGroup.Controls.Add(pageLayout);
+        pageTable.Controls.Add(_paperSize, 1, 1);
+        pageGroup.Controls.Add(pageTable);
 
         // Цвет / Дуплекс / в файл
-        var optsGroup = new GroupBox { Text = "Параметры", Dock = DockStyle.Top, Height = 90, Padding = new Padding(10) };
-        var optsLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2 };
-        optsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
-        optsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
-        optsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
-        optsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-        optsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-
+        var optsGroup = MakeGroup("Параметры", 42);
+        var optsTable = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(4) };
+        optsTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
+        optsTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
+        optsTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
+        optsTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         _colorCheck.Checked = _settings.Color;
         _colorCheck.Dock = DockStyle.Fill;
-        optsLayout.Controls.Add(_colorCheck, 0, 0);
-
+        optsTable.Controls.Add(_colorCheck, 0, 0);
+        _duplex.Dock = DockStyle.Fill;
         _duplex.Items.Add("Односторонняя");
         _duplex.Items.Add("Двусторонняя (по вертикали)");
         _duplex.Items.Add("Двусторонняя (по горизонтали)");
         _duplex.SelectedIndex = _settings.Duplex ? (_settings.DuplexVertical ? 1 : 2) : 0;
-        _duplex.Dock = DockStyle.Fill;
-        optsLayout.Controls.Add(_duplex, 1, 0);
-
+        optsTable.Controls.Add(_duplex, 1, 0);
         _printToFile.Checked = _settings.PrintToFile;
         _printToFile.Dock = DockStyle.Fill;
-        optsLayout.Controls.Add(_printToFile, 2, 0);
-
-        optsLayout.Controls.Add(new Label(), 0, 1);
-        optsLayout.Controls.Add(new Label(), 1, 1);
-        optsLayout.Controls.Add(new Label(), 2, 1);
-        optsGroup.Controls.Add(optsLayout);
+        optsTable.Controls.Add(_printToFile, 2, 0);
+        optsGroup.Controls.Add(optsTable);
 
         // Кнопки
-        var btnPrint = new Button { Text = "Печать", DialogResult = DialogResult.OK, Width = 110, Height = 34, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold) };
-        var btnCancel = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Width = 100, Height = 34 };
-        var btnProperties = new Button { Text = "Свойства принтера", Width = 130, Height = 30 };
-        btnProperties.Click += (_, _) => ShowPrinterProperties();
-
-        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 60, Padding = new Padding(10) };
+        var btnPrint = new Button { Text = "Печать", DialogResult = DialogResult.OK, Width = 100, Height = 32, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold) };
+        var btnCancel = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Width = 90, Height = 32 };
+        var btnPanel = new Panel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(0, 8, 0, 0) };
         btnPanel.Controls.Add(btnCancel);
         btnPanel.Controls.Add(btnPrint);
-        btnPanel.Controls.Add(btnProperties);
-
-        btnPrint.Location = new Point(btnPanel.Width - 120, 13);
-        btnCancel.Location = new Point(btnPanel.Width - 230, 13);
-        btnProperties.Location = new Point(btnPanel.Width - 345, 13);
+        btnPrint.Location = new Point(btnPanel.Width - 110, 8);
+        btnCancel.Location = new Point(btnPanel.Width - 210, 8);
         btnPanel.Resize += (_, _) =>
         {
-            btnPrint.Location = new Point(btnPanel.Width - 120, 13);
-            btnCancel.Location = new Point(btnPanel.Width - 230, 13);
-            btnProperties.Location = new Point(btnPanel.Width - 345, 13);
+            btnPrint.Location = new Point(btnPanel.Width - 110, 8);
+            btnCancel.Location = new Point(btnPanel.Width - 210, 8);
         };
 
         AcceptButton = btnPrint;
         CancelButton = btnCancel;
 
+        // Добавляем в правильном порядке (снизу вверх, т.к. Dock Top)
         Controls.Add(btnPanel);
         Controls.Add(optsGroup);
         Controls.Add(pageGroup);
         Controls.Add(rangeGroup);
         Controls.Add(copiesGroup);
+        Controls.Add(propsPanel);
         Controls.Add(printerGroup);
         Controls.Add(hint);
         Controls.Add(title);
+    }
+
+    private static GroupBox MakeGroup(string text, int height)
+    {
+        return new GroupBox
+        {
+            Text = text,
+            Dock = DockStyle.Top,
+            Height = height,
+            Padding = new Padding(6, 4, 6, 4),
+            Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+        };
     }
 
     private void UpdatePrinterStatus()
@@ -250,13 +248,12 @@ internal sealed class PrintForm : Form
             return;
         }
 
-        // Проверка статуса через WMI (через reflection, чтобы не ломать JIT при отсутствии System.Management)
+        // Проверка статуса через reflection (чтобы не ломать JIT при отсутствии System.Management)
         try
         {
             var mgmtType = Type.GetType("System.Management.ManagementObjectSearcher, System.Management");
             if (mgmtType == null)
             {
-                // System.Management не загружен — пробуем загрузить
                 try
                 {
                     var asm = System.Reflection.Assembly.Load("System.Management");
