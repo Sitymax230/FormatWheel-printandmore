@@ -49,17 +49,22 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
 
 Write-Host "==> Done: $(Join-Path $PSScriptRoot "dist\FormatWheel-Setup-$version.exe")" -ForegroundColor Green
 
-# también сборка установщика плагина печати
+# сборка установщика плагина печати
 $pluginProject = '.\src\FormatWheel.Plugin.Print\FormatWheel.Plugin.Print.csproj'
 if (Test-Path $pluginProject)
 {
     Write-Host '==> Building print plugin' -ForegroundColor Cyan
-    dotnet build $pluginProject -c Release | Out-Null
+    dotnet build $pluginProject -c Release
     if ($LASTEXITCODE -ne 0) { throw 'Print plugin build failed.' }
 
     Write-Host '==> Building print plugin installer' -ForegroundColor Cyan
-    & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "/DPublishDir=$PSScriptRoot\src\FormatWheel.Plugin.Print\bin\Release\net10.0-windows" .\installer\FormatWheel.Print.iss
-    if ($LASTEXITCODE -ne 0) { throw 'Print plugin installer build failed.' }
-
-    Write-Host "==> Done: $(Join-Path $PSScriptRoot "dist\FormatWheel.Print-Setup-$version.exe")" -ForegroundColor Green
+    $iscc = Find-Iscc
+    if (-not $iscc) {
+        Write-Host '==> Inno Setup not found, skipping plugin installer' -ForegroundColor Yellow
+    }
+    else {
+        & $iscc "/DAppVersion=$version" "/DPublishDir=$PSScriptRoot\src\FormatWheel.Plugin.Print\bin\Release\net10.0-windows" .\installer\FormatWheel.Print.iss
+        if ($LASTEXITCODE -ne 0) { throw 'Print plugin installer build failed.' }
+        Write-Host "==> Done: $(Join-Path $PSScriptRoot "dist\FormatWheel.Print-Setup-$version.exe")" -ForegroundColor Green
+    }
 }
