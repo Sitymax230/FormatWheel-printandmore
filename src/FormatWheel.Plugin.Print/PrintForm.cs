@@ -250,30 +250,57 @@ internal sealed class PrintForm : Form
             return;
         }
 
+        // Проверка статуса через WMI (через reflection, чтобы не ломать JIT при отсутствии System.Management)
         try
         {
-            using var searcher = new System.Management.ManagementObjectSearcher($"SELECT * FROM Win32_Printer WHERE Name='{name}'");
-            foreach (var p in searcher.Get())
+            var mgmtType = Type.GetType("System.Management.ManagementObjectSearcher, System.Management");
+            if (mgmtType == null)
             {
-                var offline = p["WorkOffline"];
-                var status = p["Status"];
-                if (offline != null && (bool)offline)
+                // System.Management не загружен — пробуем загрузить
+                try
                 {
-                    _printerStatus.Text = "Принтер оффлайн";
-                    _printerStatus.ForeColor = System.Drawing.Color.Red;
-                    return;
+                    var asm = System.Reflection.Assembly.Load("System.Management");
+                    mgmtType = asm.GetType("System.Management.ManagementObjectSearcher");
                 }
-                if (status != null)
+                catch { }
+            }
+
+            if (mgmtType != null)
+            {
+                var searcher = (IDisposable)Activator.CreateInstance(mgmtType, $"SELECT * FROM Win32_Printer WHERE Name='{name}'")!;
+                using (searcher)
                 {
-                    _printerStatus.Text = $"Статус: {status}";
-                    _printerStatus.ForeColor = System.Drawing.Color.Green;
-                    return;
+                    var getMethod = mgmtType.GetMethod("Get", Type.EmptyTypes);
+                    var collection = getMethod!.Invoke(searcher, null)!;
+                    foreach (var p in (System.Collections.IEnumerable)collection)
+                    {
+                        var offlineProp = p.GetType().GetProperty("Item");
+                        var offline = offlineProp?.GetValue(p, new object[] { "WorkOffline" });
+                        var status = offlineProp?.GetValue(p, new object[] { "Status" });
+
+                        if (offline != null && (bool)offline)
+                        {
+                            _printerStatus.Text = "Принтер оффлайн";
+                            _printerStatus.ForeColor = System.Drawing.Color.Red;
+                            return;
+                        }
+                        if (status != null)
+                        {
+                            _printerStatus.Text = $"Статус: {status}";
+                            _printerStatus.ForeColor = System.Drawing.Color.Green;
+                            return;
+                        }
+                    }
                 }
+                _printerStatus.Text = "Готов к печати";
+                _printerStatus.ForeColor = System.Drawing.Color.Green;
+                return;
             }
         }
         catch { }
-        _printerStatus.Text = "Не удалось проверить статус";
-        _printerStatus.ForeColor = System.Drawing.Color.Gray;
+
+        _printerStatus.Text = "Выбран";
+        _printerStatus.ForeColor = System.Drawing.Color.Green;
     }
 
     private void ShowPrinterProperties()

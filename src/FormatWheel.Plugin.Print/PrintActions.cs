@@ -6,7 +6,6 @@ using System.Drawing.Printing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Management;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -444,19 +443,39 @@ public sealed class PrintActions : IWheelActions
     {
         try
         {
-            using var searcher = new ManagementObjectSearcher($"SELECT * FROM Win32_Printer WHERE Name='{printerName}'");
-            foreach (var p in searcher.Get())
+            var mgmtType = Type.GetType("System.Management.ManagementObjectSearcher, System.Management");
+            if (mgmtType == null)
             {
-                var offline = p["WorkOffline"];
-                var status = p["Status"];
+                try
+                {
+                    var asm = System.Reflection.Assembly.Load("System.Management");
+                    mgmtType = asm.GetType("System.Management.ManagementObjectSearcher");
+                }
+                catch { }
+            }
 
-                if (offline != null && (bool)offline)
-                    return "Оффлайн";
+            if (mgmtType != null)
+            {
+                var searcher = (IDisposable)Activator.CreateInstance(mgmtType, $"SELECT * FROM Win32_Printer WHERE Name='{printerName}'")!;
+                using (searcher)
+                {
+                    var getMethod = mgmtType.GetMethod("Get", Type.EmptyTypes);
+                    var collection = getMethod!.Invoke(searcher, null)!;
+                    foreach (var p in (System.Collections.IEnumerable)collection)
+                    {
+                        var offlineProp = p.GetType().GetProperty("Item");
+                        var offline = offlineProp?.GetValue(p, new object[] { "WorkOffline" });
+                        var status = offlineProp?.GetValue(p, new object[] { "Status" });
 
-                if (status != null)
-                    return $"Статус: {status}";
+                        if (offline != null && (bool)offline)
+                            return "Оффлайн";
 
-                return "Готов к печати";
+                        if (status != null)
+                            return $"Статус: {status}";
+
+                        return "Готов к печати";
+                    }
+                }
             }
         }
         catch { }

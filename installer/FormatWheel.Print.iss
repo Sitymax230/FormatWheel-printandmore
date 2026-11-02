@@ -51,10 +51,14 @@ en.InstallFolder=Plugin will be installed to:
 ru.InstallFolder=Плагин будет установлен в:
 
 [Files]
-; плагин и его зависимость FormatWheel.Sdk.dll
+; плагин и его зависимости
 Source: "{#PublishDir}\FormatWheel.Print.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\FormatWheel.Print.deps.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\FormatWheel.Sdk.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PublishDir}\System.Management.dll"; DestDir: "{app}"; Flags: ignoreversion
+
+; runtimes для System.Management (WMI)
+Source: "{#PublishDir}\runtimes\*"; DestDir: "{app}\runtimes"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; PDB опциональны — оставляем для отладки, не мешают работе
 Source: "{#PublishDir}\FormatWheel.Print.pdb"; DestDir: "{app}"; Flags: ignoreversion
