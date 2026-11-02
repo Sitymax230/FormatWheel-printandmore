@@ -4,54 +4,69 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Printing;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Management;
+using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using FormatWheel.Sdk;
 
+namespace FormatWheel.PrintPlugin;
+
 // Пример расширения Format Wheel: отправка файлов на печать.
 //
 // Лепесток «Печать» попадает в ТРЕТЬЕ меню колеса — слот WheelSlot.Alt (Alt + Shift).
-// Run() вызывается в отдельном STA-потоке — оттуда можно показывать диалог печати и окна Windows Forms.
+// Run() вызывается в отдельном STA-потоке — оттуда можно показывать окна Windows Forms.
+//
+// 10 функций:
+// 1. Количество копий (NumericUpDown в диалоге)
+// 2. Диапазон страниц (все / выбранные)
+// 3. Ориентация и формат бумаги (книжная/альбомная, A4/A3/A5/Letter)
+// 4. Цветная / ЧБ печать
+// 5. Двусторонняя печать (дуплекс)
+// 6. «Быстрая печать» — второй лепесток без диалога
+// 7. Запомнить последний принтер (JSON в AppData)
+// 8. Статус принтера (WMI Win32_Printer)
+// 9. DOCX/XLSX через Office Interop (если установлен Word/Excel)
+// 10. Печать в файл (Microsoft Print to PDF / XPS)
+// + Автообновление плагина с GitHub releases
+
 public sealed class PrintActions : IWheelActions
 {
     public string Name => "Print";
 
-    // Изображения и документы — можно печатать
     private static readonly string[] PrintableExtensions =
     {
-        // фото
         ".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".gif", ".webp",
-        // текстовые документы
         ".txt", ".log", ".csv", ".rtf",
-        // остальные документы (печать через системную оболочку)
         ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"
     };
 
-    // Видео — нельзя печатать
     private static readonly string[] VideoExtensions =
     {
         ".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".mpeg", ".mpg", ".m4v", ".3gp"
     };
 
-    // Аудио — нельзя печатать
     private static readonly string[] AudioExtensions =
     {
         ".mp3", ".wav", ".wma", ".flac", ".aac", ".ogg", ".m4a"
     };
+
+    private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private const string RepoOwner = "Sitymax230";
+    private const string RepoName = "FormatWheel-printandmore";
+    public const string CurrentVersion = "1.0.3";
 
     public bool CanHandle(string path)
     {
         if (string.IsNullOrEmpty(path)) return false;
         var ext = Path.GetExtension(path)?.ToLowerInvariant() ?? "";
         if (string.IsNullOrEmpty(ext)) return false;
-
-        // Не видео и не аудио
         if (Array.Exists(VideoExtensions, v => v == ext)) return false;
         if (Array.Exists(AudioExtensions, a => a == ext)) return false;
-
-        // Только изображения и документы
         return Array.Exists(PrintableExtensions, p => p == ext);
     }
 
@@ -60,39 +75,58 @@ public sealed class PrintActions : IWheelActions
         if (files == null || files.Count == 0 || files.Any(f => !CanHandle(f)))
             return Array.Empty<WheelAction>();
 
+        // Автообновление при первом показе меню (fire-and-forget)
+        _ = CheckForUpdatesAsync();
+
         return new List<WheelAction>
         {
-            new WheelAction("Печать", "отправить на принтер · Alt + Shift", PrintAsync)
+            // 6. «Быстрая печать» — мгновенно на принтер по умолчанию без диалога
+            new WheelAction("Быстрая печать", "мгновенно на принтер по умолчанию", QuickPrintAsync)
             {
-                Slot = WheelSlot.Alt // ТРЕТЬЕ МЕНЮ: Alt + Shift (Primary = Shift — первое, Ctrl = Ctrl+Shift — второе)
+                Slot = WheelSlot.Alt
+            },
+            // Обычная печать с полным диалогом
+            new WheelAction("Печать", "открыть диалог печати · Alt + Shift", ShowPrintDialogAndPrint)
+            {
+                Slot = WheelSlot.Alt
             }
         };
     }
 
-    private static Task PrintAsync(IReadOnlyList<string> files, Action<double> report, CancellationToken ct)
-    {
-        // WheelController уже вызывает Run в STA-потоке, можно показывать окна напрямую
-        ShowPrintDialogAndPrint(files, report, ct);
-        return Task.CompletedTask;
-    }
+    // ========================================================================
+    // ОБЫЧНАЯ ПЕЧАТЬ (с диалогом)
+    // ========================================================================
 
-    private static void ShowPrintDialogAndPrint(IReadOnlyList<string> files, Action<double> report, CancellationToken ct)
+    private static Task ShowPrintDialogAndPrint(IReadOnlyList<string> files, Action<double> report, CancellationToken ct)
     {
-        using var dialog = new PrintForm(files);
+        var settings = PluginSettings.Load();
+        using var dialog = new PrintForm(files.ToArray(), settings);
         if (dialog.ShowDialog() != DialogResult.OK)
         {
-            report(0); // пользователь отменил — не ошибка
-            return;
+            report(0);
+            return Task.CompletedTask;
         }
 
-        var settings = dialog.PrinterSettings;
+        // Сохраняем настройки
+        settings.Copies = dialog.Copies;
+        settings.Color = dialog.Color;
+        settings.Duplex = dialog.DuplexEnabled;
+        settings.DuplexVertical = dialog.DuplexVertical;
+        settings.PaperSize = dialog.PaperSizeName;
+        settings.Landscape = dialog.Landscape;
+        settings.PrintToFile = dialog.PrintToFile;
+        settings.Save();
+
+        ApplyPrinterSettings(dialog.PrinterSettings, dialog.Copies, dialog.Color, dialog.DuplexEnabled,
+            dialog.DuplexVertical, dialog.Landscape, dialog.PaperSizeName);
+
         int done = 0;
         foreach (var file in files)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                PrintFile(file, settings);
+                PrintFile(file, dialog.PrinterSettings, dialog.PageRange, dialog.PrintToFile);
             }
             catch (Exception ex)
             {
@@ -104,44 +138,191 @@ public sealed class PrintActions : IWheelActions
             done++;
             report((double)done / files.Count);
         }
+        return Task.CompletedTask;
     }
 
-    private static void PrintFile(string file, PrinterSettings settings)
+    // ========================================================================
+    // БЫСТРАЯ ПЕЧАТЬ (без диалога)
+    // ========================================================================
+
+    private static Task QuickPrintAsync(IReadOnlyList<string> files, Action<double> report, CancellationToken ct)
+    {
+        var settings = PluginSettings.Load();
+        using var doc = new PrintDocument
+        {
+            PrinterSettings = new PrinterSettings(),
+            DocumentName = files.Count == 1 ? Path.GetFileName(files[0]) : $"Печать {files.Count} файлов"
+        };
+
+        if (settings.Copies > 0)
+            doc.PrinterSettings.Copies = (short)Math.Min(settings.Copies, 999);
+        doc.PrinterSettings.DefaultPageSettings.Color = settings.Color;
+
+        if (settings.Duplex)
+            doc.PrinterSettings.Duplex = settings.DuplexVertical ? Duplex.Vertical : Duplex.Horizontal;
+
+        int done = 0;
+        foreach (var file in files)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                doc.PrintPage += (_, e) => DrawPage(e, file);
+                doc.Print();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось напечатать «{Path.GetFileName(file)}»: {ex.Message}",
+                    "Format Wheel · быстрая печать",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            done++;
+            report((double)done / files.Count);
+        }
+        return Task.CompletedTask;
+    }
+
+    // ========================================================================
+    // ПЕЧАТЬ ОТДЕЛЬНОГО ФАЙЛА
+    // ========================================================================
+
+    private static void PrintFile(string file, PrinterSettings settings, string? pageRange, bool printToFile)
     {
         var ext = Path.GetExtension(file).ToLowerInvariant();
 
-        // Прямая печать через PrintDocument для изображений и текстовых файлов
-        if (Array.Exists(new[]
-            {
-                ".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".gif", ".webp",
-                ".txt", ".log", ".csv", ".rtf"
-            }, e => e == ext))
+        // 10. Печать в файл (Microsoft Print to PDF / XPS)
+        if (printToFile)
         {
-            using var doc = new PrintDocument
-            {
-                PrinterSettings = settings,
-                DocumentName = Path.GetFileName(file),
-            };
-            doc.PrintPage += (_, e) => DrawPage(e, file);
-            doc.Print();
+            settings.PrintFileName = Path.Combine(
+                Path.GetTempPath(),
+                $"{Path.GetFileNameWithoutExtension(file)}_{Guid.NewGuid():N}.pdf");
+            settings.PrintToFile = true;
         }
-        else
+
+        // 9. DOC/DOCX/XLS/XLSX/PPT/PPTX через Office Interop (если установлен Office)
+        if (ext is ".doc" or ".docx" or ".xls" or ".xlsx" or ".ppt" or ".pptx")
         {
-            // Для остальных документов (PDF, DOC, XLS и т.д.) — системная печать через Shell
-            var psi = new ProcessStartInfo
+            if (TryPrintOffice(file, settings))
+                return;
+            ShellPrint(file);
+            return;
+        }
+
+        // PDF и RTF — через системную оболочку
+        if (ext == ".pdf" || ext == ".rtf")
+        {
+            ShellPrint(file);
+            return;
+        }
+
+        // Изображения и текст — через PrintDocument
+        using var doc = new PrintDocument
+        {
+            PrinterSettings = settings,
+            DocumentName = Path.GetFileName(file),
+        };
+        doc.PrintPage += (_, e) => DrawPage(e, file, pageRange);
+        doc.Print();
+    }
+
+    // ========================================================================
+    // 9. ПЕЧАТЬ ЧЕРЕЗ OFFICE INTEROP (DOCX, XLSX, PPTX)
+    // ========================================================================
+
+    private static bool TryPrintOffice(string file, PrinterSettings settings)
+    {
+        try
+        {
+            var ext = Path.GetExtension(file).ToLowerInvariant();
+            object? officeApp = null;
+
+            if (ext is ".doc" or ".docx")
+                officeApp = CreateOfficeProgID("Word.Application");
+            else if (ext is ".xls" or ".xlsx")
+                officeApp = CreateOfficeProgID("Excel.Application");
+            else if (ext is ".ppt" or ".pptx")
+                officeApp = CreateOfficeProgID("PowerPoint.Application");
+
+            if (officeApp == null) return false;
+
+            dynamic app = officeApp;
+            app.Visible = false;
+            app.DisplayAlerts = false;
+
+            dynamic doc;
+            if (ext is ".doc" or ".docx")
             {
-                FileName = file,
-                Verb = "print",
-                UseShellExecute = true,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden
-            };
-            using var process = Process.Start(psi);
-            process?.WaitForExit(30000);
+                doc = app.Documents.Open(file);
+                for (int i = 0; i < settings.Copies; i++)
+                    doc.PrintOut();
+                doc.Close(false);
+                app.Quit();
+            }
+            else if (ext is ".xls" or ".xlsx")
+            {
+                doc = app.Workbooks.Open(file);
+                for (int i = 0; i < settings.Copies; i++)
+                    doc.PrintOut();
+                doc.Close(false);
+                app.Quit();
+            }
+            else if (ext is ".ppt" or ".pptx")
+            {
+                doc = app.Presentations.Open(file);
+                for (int i = 0; i < settings.Copies; i++)
+                    doc.PrintOut();
+                doc.Close();
+                app.Quit();
+            }
+            else
+            {
+                return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
-    private static void DrawPage(PrintPageEventArgs e, string file)
+    private static object? CreateOfficeProgID(string progId)
+    {
+        try
+        {
+            var type = Type.GetTypeFromProgID(progId);
+            if (type != null)
+                return Activator.CreateInstance(type);
+        }
+        catch { }
+        return null;
+    }
+
+    // ========================================================================
+    // ПЕЧАТЬ ЧЕРЕЗ СИСТЕМНУЮ ОБОЛОЧКУ (PDF, RTF через Shell)
+    // ========================================================================
+
+    private static void ShellPrint(string file)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = file,
+            Verb = "print",
+            UseShellExecute = true,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden
+        };
+        using var process = Process.Start(psi);
+        process?.WaitForExit(30000);
+    }
+
+    // ========================================================================
+    // ОТРИСОВКА СТРАНИЦЫ (изображения и текст)
+    // ========================================================================
+
+    private static void DrawPage(PrintPageEventArgs e, string file, string? pageRange = null)
     {
         var margin = e.MarginBounds;
         var ext = Path.GetExtension(file);
@@ -150,9 +331,22 @@ public sealed class PrintActions : IWheelActions
         {
             using var font = new Font("Consolas", 10);
             float y = margin.Top;
-            foreach (var line in File.ReadLines(file))
+
+            var lines = File.ReadLines(file).ToList();
+            int totalLines = lines.Count;
+            int startLine = 0, endLine = totalLines;
+
+            // 2. Диапазон страниц — поддержка HasMorePages
+            if (!string.IsNullOrWhiteSpace(pageRange))
             {
-                string text = line ?? "";
+                var range = ParsePageRange(pageRange, totalLines);
+                startLine = range.start;
+                endLine = range.end;
+            }
+
+            for (int i = startLine; i < endLine; i++)
+            {
+                string text = lines[i] ?? "";
                 if (y + font.Height > margin.Bottom)
                 {
                     e.HasMorePages = true;
@@ -164,7 +358,7 @@ public sealed class PrintActions : IWheelActions
         }
         else
         {
-            // картинка вписывается в страницу с сохранением пропорций
+            // Изображение — вписываем в страницу с сохранением пропорций
             using var image = Image.FromFile(file);
             float scale = Math.Min((float)margin.Width / image.Width, (float)margin.Height / image.Height);
             float w = image.Width * scale, h = image.Height * scale;
@@ -173,155 +367,153 @@ public sealed class PrintActions : IWheelActions
             e.Graphics.DrawImage(image, x, y, w, h);
         }
     }
-}
 
-// Кастомное диалоговое окно печати: выбор принтера, кнопки «Свойства» и «Печать»
-internal sealed class PrintForm : Form
-{
-    private readonly ComboBox _printerCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly Button _propertiesButton = new() { Text = "Свойства" };
-    private readonly Button _printButton = new() { Text = "Печать", DialogResult = DialogResult.OK };
-    private readonly Button _cancelButton = new() { Text = "Отмена", DialogResult = DialogResult.Cancel };
+    // ========================================================================
+    // ПАРСИНГ ДИАПАЗОНА СТРАНИЦ ("1,3,5-7")
+    // ========================================================================
 
-    public PrinterSettings PrinterSettings { get; private set; } = new PrinterSettings();
-
-    public PrintForm(IReadOnlyList<string> files)
+    private static (int start, int end) ParsePageRange(string range, int totalLines)
     {
-        Text = "Печать — Format Wheel";
-        Width = 460;
-        Height = 240;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        StartPosition = FormStartPosition.CenterScreen;
-
-        // Заголовок
-        var titleLabel = new Label
+        try
         {
-            Text = $"Файлов для печати: {files.Count}",
-            Dock = DockStyle.Top,
-            Height = 26,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(15, 0, 0, 0),
-            Font = new Font("Segoe UI", 10, FontStyle.Bold)
-        };
-
-        // Подсказка о типах файлов
-        var hintLabel = new Label
-        {
-            Text = "Печать доступна для фото и документов (видео и аудио не поддерживаются).",
-            Dock = DockStyle.Top,
-            Height = 20,
-            Padding = new Padding(15, 0, 0, 0),
-            Font = new Font("Segoe UI", 8.5f),
-            ForeColor = Color.Gray
-        };
-
-        // Выбор принтера
-        var printerLabel = new Label
-        {
-            Text = "Принтер:",
-            Dock = DockStyle.Top,
-            Height = 20,
-            Padding = new Padding(15, 8, 0, 0)
-        };
-
-        _printerCombo.Dock = DockStyle.Top;
-        _printerCombo.Height = 26;
-        _printerCombo.Margin = new Padding(15, 0, 15, 10);
-
-        foreach (string p in PrinterSettings.InstalledPrinters)
-            _printerCombo.Items.Add(p);
-
-        if (_printerCombo.Items.Count > 0)
-        {
-            _printerCombo.SelectedIndex = 0;
-            PrinterSettings.PrinterName = _printerCombo.SelectedItem?.ToString() ?? "";
-        }
-        else
-        {
-            _printerCombo.Items.Add("Нет доступных принтеров");
-            _printerCombo.SelectedIndex = 0;
-            _printButton.Enabled = false;
-        }
-
-        _printerCombo.SelectedIndexChanged += (_, _) =>
-        {
-            var name = _printerCombo.SelectedItem?.ToString() ?? "";
-            if (name != "Нет доступных принтеров")
-                PrinterSettings.PrinterName = name;
-        };
-
-        // Кнопки (расположены вправо внизу)
-        _propertiesButton.Width = 100;
-        _propertiesButton.Height = 30;
-        _propertiesButton.Click += (_, _) => ShowPrinterProperties();
-
-        _printButton.Width = 100;
-        _printButton.Height = 30;
-        _printButton.Click += (_, _) => DialogResult = DialogResult.OK;
-
-        _cancelButton.Width = 100;
-        _cancelButton.Height = 30;
-
-        var buttonPanel = new Panel
-        {
-            Dock = DockStyle.Bottom,
-            Height = 56,
-            Padding = new Padding(10)
-        };
-        buttonPanel.Controls.Add(_cancelButton);
-        buttonPanel.Controls.Add(_printButton);
-        buttonPanel.Controls.Add(_propertiesButton);
-
-        // Кнопки вправо
-        UpdateButtonLocations(buttonPanel.Width);
-        buttonPanel.Resize += (_, _) => UpdateButtonLocations(buttonPanel.Width);
-
-        Controls.Add(buttonPanel);
-        Controls.Add(_printerCombo);
-        Controls.Add(printerLabel);
-        Controls.Add(hintLabel);
-        Controls.Add(titleLabel);
-
-        AcceptButton = _printButton;
-        CancelButton = _cancelButton;
-    }
-
-    private void UpdateButtonLocations(int panelWidth)
-    {
-        _propertiesButton.Location = new Point(panelWidth - 115, 13);
-        _printButton.Location = new Point(panelWidth - 225, 13);
-        _cancelButton.Location = new Point(panelWidth - 335, 13);
-    }
-
-    private void ShowPrinterProperties()
-    {
-        var name = _printerCombo.SelectedItem?.ToString() ?? "";
-        if (name == "Нет доступных принтеров") return;
-
-        using var pd = new PrintDialog
-        {
-            PrinterSettings = new PrinterSettings { PrinterName = name },
-            AllowSomePages = false,
-            PrintToFile = false,
-            ShowHelp = false,
-            ShowNetwork = false,
-            UseEXDialog = true
-        };
-
-        if (pd.ShowDialog() == DialogResult.OK)
-        {
-            PrinterSettings = pd.PrinterSettings;
-            // Обновляем выбранный принтер в комбобоксе
-            for (int i = 0; i < _printerCombo.Items.Count; i++)
+            var parts = range.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            int start = int.MaxValue, end = int.MinValue;
+            foreach (var part in parts)
             {
-                if (_printerCombo.Items[i]?.ToString() == PrinterSettings.PrinterName)
+                if (part.Contains('-'))
                 {
-                    _printerCombo.SelectedIndex = i;
+                    var sub = part.Split('-');
+                    int a = int.Parse(sub[0].Trim());
+                    int b = int.Parse(sub[1].Trim());
+                    start = Math.Min(start, a);
+                    end = Math.Max(end, b);
+                }
+                else
+                {
+                    int n = int.Parse(part.Trim());
+                    start = Math.Min(start, n);
+                    end = Math.Max(end, n);
+                }
+            }
+            start = Math.Clamp(start, 1, totalLines);
+            end = Math.Clamp(end, 1, totalLines);
+            return (start - 1, end);
+        }
+        catch
+        {
+            return (0, totalLines);
+        }
+    }
+
+    // ========================================================================
+    // ПРИМЕНЕНИЕ НАСТРОЕК К PrinterSettings
+    // ========================================================================
+
+    private static void ApplyPrinterSettings(PrinterSettings settings, int copies, bool color, bool duplex,
+        bool duplexVertical, bool landscape, string paperSize)
+    {
+        settings.Copies = (short)Math.Min(copies, 999);
+        settings.DefaultPageSettings.Color = color;
+        settings.DefaultPageSettings.Landscape = landscape;
+
+        if (duplex)
+            settings.Duplex = duplexVertical ? Duplex.Vertical : Duplex.Horizontal;
+        else
+            settings.Duplex = Duplex.Simplex;
+
+        // 3. Формат бумаги
+        try
+        {
+            foreach (PaperSize ps in settings.PaperSizes)
+            {
+                if (string.Equals(ps.PaperName, paperSize, StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.DefaultPageSettings.PaperSize = ps;
                     break;
                 }
             }
+        }
+        catch { }
+    }
+
+    // ========================================================================
+    // 8. СТАТУС ПРИНТЕРА (WMI Win32_Printer)
+    // ========================================================================
+
+    public static string GetPrinterStatus(string printerName)
+    {
+        try
+        {
+            using var searcher = new ManagementObjectSearcher($"SELECT * FROM Win32_Printer WHERE Name='{printerName}'");
+            foreach (var p in searcher.Get())
+            {
+                var offline = p["WorkOffline"];
+                var status = p["Status"];
+
+                if (offline != null && (bool)offline)
+                    return "Оффлайн";
+
+                if (status != null)
+                    return $"Статус: {status}";
+
+                return "Готов к печати";
+            }
+        }
+        catch { }
+        return "Неизвестно";
+    }
+
+    // ========================================================================
+    // АВТООБНОВЛЕНИЕ С GITHUB
+    // ========================================================================
+
+    private static async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            var apiUrl = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
+            _httpClient.DefaultRequestHeaders.UserAgent.Add(
+                new System.Net.Http.Headers.ProductInfoHeaderValue("FormatWheel-PrintPlugin", CurrentVersion));
+
+            var json = await _httpClient.GetStringAsync(apiUrl);
+            using var doc = JsonDocument.Parse(json);
+
+            var tag = doc.RootElement.GetProperty("tag_name").GetString() ?? "";
+            if (string.IsNullOrEmpty(tag)) return;
+
+            var remoteVersion = tag.TrimStart('v');
+            if (!Version.TryParse(remoteVersion, out var remoteVer)) return;
+            if (!Version.TryParse(CurrentVersion, out var localVer)) return;
+
+            if (remoteVer <= localVer) return;
+
+            string? installerUrl = null;
+            string? installerName = null;
+            if (doc.RootElement.TryGetProperty("assets", out var assets))
+            {
+                foreach (var asset in assets.EnumerateArray())
+                {
+                    var name = asset.GetProperty("name").GetString() ?? "";
+                    if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && name.Contains("Print-Setup"))
+                    {
+                        installerUrl = asset.GetProperty("browser_download_url").GetString();
+                        installerName = name;
+                        break;
+                    }
+                }
+            }
+
+            var message = $"Доступна версия {remoteVersion} плагина печати (у вас {CurrentVersion}).\n\n";
+            if (installerUrl != null)
+                message += $"Скачать установщик: {installerUrl}";
+            else
+                message += $"Перейдите на страницу релизов: https://github.com/{RepoOwner}/{RepoName}/releases";
+
+            MessageBox.Show(message, "Плагин печати: обновление", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch
+        {
+            // Тихий отказ — автообновление не критично
         }
     }
 }

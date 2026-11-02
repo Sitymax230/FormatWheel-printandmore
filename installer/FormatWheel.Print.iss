@@ -5,7 +5,7 @@
 #define AppName      "Format Wheel · печать"
 #define AppExe       "FormatWheel.Print.dll"
 #ifndef AppVersion
-  #define AppVersion "1.0.2"
+  #define AppVersion "1.0.3"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\src\FormatWheel.Plugin.Print\bin\Release\net10.0-windows"
